@@ -1,0 +1,12 @@
+langchain
+langchain-community
+langchain-chroma
+streamlit
+sentence-transformers
+pypdf
+python-dotenv
+tiktoken
+requests
+numpy
+mysql-connector-python
+pyjwt
