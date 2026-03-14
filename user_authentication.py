@@ -37,6 +37,14 @@ class UserAuthentication:
             注册结果
         """
         try:
+            # 检查密码长度
+            min_length = 6
+            max_length = 20
+            if len(password) < min_length:
+                return {"success": False, "message": f"密码长度不能少于{min_length}个字符"}
+            if len(password) > max_length:
+                return {"success": False, "message": f"密码长度不能超过{max_length}个字符"}
+
             # 检查用户名是否已存在
             existing_user = self.mysql_manager.get_user_by_username(username)
             if existing_user:

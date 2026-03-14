@@ -9,7 +9,10 @@ load_dotenv()
 # 从环境变量获取API密钥
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 if not DEEPSEEK_API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY 环境变量未设置")
+    # 提供默认值，仅用于测试
+    DEEPSEEK_API_KEY = "测试密钥"
+    print("⚠️  警告: 未设置 DEEPSEEK_API_KEY 环境变量，使用测试密钥")
+    print("   请在生产环境中设置真实的 API 密钥")
 # ==================== 文档处理配置 ====================
 DOCUMENT_SETTINGS = {
     "chunk_size": 500,  # 文本块大小（字符数）
@@ -37,6 +40,14 @@ MODEL_SETTINGS = {
     "api_base": "https://api.deepseek.com/v1",  # API地址
     "temperature": 0.1,  # 温度参数，控制随机性
     "max_tokens": 2000,  # 最大生成token数
+}
+
+# ==================== 系统提示词配置 ====================
+SYSTEM_PROMPTS = {
+    "general": "你是一个AI智能问答助手，能够回答各种问题。请根据你的知识提供准确、有用的回答。",
+    "rag": "你是一个AI知识库智能体，专门用于回答用户关于知识库的问题。如果参考信息中没有相关内容，请使用你自己的知识来回答问题，不要拒绝回答。",
+    "web_search": "你是AI智能问答助手，负责根据用户问题进行联网搜索并提供准确的信息。",
+    "conflict_resolution": "你是AI智能问答助手，负责处理知识库信息和联网搜索信息之间的冲突。"
 }
 # ==================== 对话配置 ====================
 CONVERSATION_SETTINGS = {

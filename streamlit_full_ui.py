@@ -18,7 +18,7 @@ try:
     from vector_store_manager import VectorStoreManager
     from document_processor import DocumentProcessor
     from user_authentication import UserAuthentication
-    from config import DEEPSEEK_API_KEY, MODEL_SETTINGS
+    from config import DEEPSEEK_API_KEY, MODEL_SETTINGS, SYSTEM_PROMPTS
 
     print("✅ 导入模块成功")
 except ImportError as e:
@@ -114,7 +114,34 @@ class CompleteAIAssistant:
                     print(f"⚠️ 向量检索失败: {e}")
                     context = ""
 
-            # 2. 获取最近的对话历史（在添加新消息之前）
+            # 2. 检查是否是询问历史问题
+            is_history_query = False
+            history_keywords = ["刚刚问的是什么", "刚才问的是什么", "我刚问的", "我刚才问的", "上一个问题", "前一个问题"]
+            for keyword in history_keywords:
+                if keyword in message:
+                    is_history_query = True
+                    break
+
+            # 3. 获取上一个用户问题
+            last_user_question = ""
+            if is_history_query:
+                # 获取完整的对话历史
+                target_session_id = session_id or self.conversation_manager.current_session_id
+                full_history = self.conversation_manager.get_conversation_history(
+                    user_id=user_id,
+                    session_id=target_session_id,
+                    as_string=False
+                )
+                # 查找最后一个用户消息
+                for msg in reversed(full_history):
+                    if msg["role"] == "user":
+                        last_user_question = msg["content"]
+                        break
+
+            # 4. 添加用户消息到对话历史 - 使用指定的会话ID
+            self.conversation_manager.add_message(user_id, "user", message, session_id=session_id)
+
+            # 5. 获取最新的对话历史（在添加新消息之后）
             target_session_id = session_id or self.conversation_manager.current_session_id
             print(f"获取用户 {user_id} 会话 {target_session_id} 的历史")
             chat_history = self.conversation_manager.get_recent_history(
@@ -124,10 +151,7 @@ class CompleteAIAssistant:
             )
             print(f"历史对话: {chat_history}")
 
-            # 3. 添加用户消息到对话历史 - 使用指定的会话ID
-            self.conversation_manager.add_message(user_id, "user", message, session_id=session_id)
-
-            # 4. 检查是否是时间查询
+            # 6. 检查是否是时间查询
             if use_tools and self._is_time_query(message):
                 time_result = self._get_current_time()
                 response = {
@@ -141,8 +165,8 @@ class CompleteAIAssistant:
                 end_time = time.time()
                 print(f"⏱️ 时间查询处理完成，耗时: {end_time - start_time:.2f}秒")
                 return response
-
-            # 5. 检查是否应使用工具
+            
+            # 7. 检查是否应使用工具
             if use_tools:
                 # 延迟初始化tool_integration
                 if self.tool_integration is None:
@@ -177,36 +201,37 @@ class CompleteAIAssistant:
                         print(f"⏱️ 工具调用完成，耗时: {end_time - start_time:.2f}秒")
                         return response
 
-            # 6. 调用DeepSeek API
+            # 8. 调用DeepSeek API
             api_start = time.time()
             
             # 检查文档是否相关
             is_document_relevant = False
             if use_rag and sources_used:
-                # 简单判断：检查用户问题中的关键词是否在参考文档中出现
-                # 提取用户问题的关键词
-                user_keywords = set(message.lower().split())
-                # 检查是否有任何关键词在参考文档中出现
-                for source in sources_used:
-                    if source.get('content_preview'):
-                        preview_lower = source['content_preview'].lower()
-                        for keyword in user_keywords:
-                            if keyword in preview_lower:
-                                is_document_relevant = True
-                                break
-                    if is_document_relevant:
+                # 简化逻辑：只要向量数据库返回了结果，就认为文档相关
+                # 因为向量数据库已经通过相似度搜索返回了最相关的文档
+                is_document_relevant = True
+                
+                # 对于特定的问题类型，直接认为与文档相关
+                specific_questions = ["项目背景", "项目痛点", "背景与痛点", "项目介绍", "项目说明", "上传的文档", "文档内容"]
+                for question in specific_questions:
+                    if question in message:
+                        is_document_relevant = True
                         break
-                # 如果没有检测到相关性，或者用户问题太短，使用通用模式
-                if not is_document_relevant or len(user_keywords) < 2:
-                    is_document_relevant = False
             
-            # 根据文档相关性选择不同的调用模式
-            if is_document_relevant:
-                # 文档相关，使用RAG模式
-                answer = self._call_deepseek_api(message, context, chat_history)
+            # 9. 处理历史问题查询
+            if is_history_query:
+                if last_user_question:
+                    answer = f"你刚刚的问题是：{last_user_question}"
+                else:
+                    answer = "抱歉，我没有找到你之前的问题。"
             else:
-                # 文档不相关，使用通用模式
-                answer = self._call_deepseek_api(message, "", chat_history, use_general_mode=True)
+                # 根据文档相关性选择不同的调用模式
+                if is_document_relevant:
+                    # 文档相关，使用RAG模式
+                    answer = self._call_deepseek_api(message, context, chat_history)
+                else:
+                    # 文档不相关，使用通用模式
+                    answer = self._call_deepseek_api(message, "", chat_history, use_general_mode=True)
             
             api_end = time.time()
             print(f"⏱️ API调用耗时: {api_end - api_start:.2f}秒")
@@ -278,10 +303,10 @@ class CompleteAIAssistant:
         # 添加系统消息
         if use_general_mode:
             # 通用模式
-            system_message = f"你是一个智能AI助手，能够回答各种问题。请根据你的知识提供准确、有用的回答。"
+            system_message = SYSTEM_PROMPTS.get("general", "你是一个智能AI助手，能够回答各种问题。请根据你的知识提供准确、有用的回答。")
         else:
             # RAG模式
-            system_message = f"你是一个独立的AI知识库智能体，专门用于回答用户关于知识库的问题。"
+            system_message = SYSTEM_PROMPTS.get("rag", "你是一个AI知识库智能体，专门用于回答用户关于知识库的问题。")
             if context:
                 system_message += f"\n\n参考信息：\n{context}"
         messages.append({"role": "system", "content": system_message})

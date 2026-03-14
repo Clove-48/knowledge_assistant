@@ -10,3 +10,4 @@ requests
 numpy
 mysql-connector-python
 pyjwt
+jieba

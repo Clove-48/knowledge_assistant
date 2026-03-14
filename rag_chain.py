@@ -6,15 +6,16 @@ import time
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
-from config import DEEPSEEK_API_KEY, MODEL_SETTINGS, RETRIEVAL_SETTINGS
+from config import DEEPSEEK_API_KEY, MODEL_SETTINGS, RETRIEVAL_SETTINGS, SYSTEM_PROMPTS
 
 # 添加当前目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from vector_store_manager import VectorStoreManager
+from advanced_ai import AdvancedAIModule, ConversationStateManager
 
 
 class RobustRAGChain:
-    """健壮的 RAG 检索链：结合向量检索和稳定的 API 调用"""
+    """健壮的 RAG 检索链：结合向量检索、联网搜索和稳定的 API 调用"""
 
     def __init__(self, vector_store_manager: Optional[VectorStoreManager] = None):
         """
@@ -29,6 +30,12 @@ class RobustRAGChain:
         else:
             self.vector_manager = VectorStoreManager()
 
+        # 初始化高级AI模块
+        self.advanced_ai = AdvancedAIModule(self.vector_manager)
+        
+        # 初始化对话状态管理器
+        self.conversation_state_manager = ConversationStateManager()
+
         # 初始化检索器
         self.retriever = self.vector_manager.vector_store.as_retriever(
             search_kwargs=RETRIEVAL_SETTINGS["search_kwargs"]
@@ -36,6 +43,8 @@ class RobustRAGChain:
 
         # 定义 Prompt 模板
         self.prompt_template = self._create_prompt_template()
+        self.web_search_prompt_template = self._create_web_search_prompt_template()
+        self.conflict_resolution_prompt_template = self._create_conflict_resolution_prompt_template()
 
         # API 配置
         self.api_key = DEEPSEEK_API_KEY
@@ -49,8 +58,8 @@ class RobustRAGChain:
     def _create_prompt_template(self) -> str:
         """创建 Prompt 模板"""
 
-        template = """# 角色设定
-你是DeepSeek AI知识库助手，一个专门处理多格式文档并基于向量检索的智能问答系统。你具备两种回答模式：1)基于检索到的文档片段回答；2)基于自身知识库回答。
+        template = f"""# 角色设定
+{SYSTEM_PROMPTS.get('rag', '你是一个AI知识库智能体，专门用于回答用户关于知识库的问题。')}
 
 # 核心功能定位
 你支持：PDF/DOCX/TXT/PPT/Excel等多种格式文档解析、向量化存储、语义检索。用户上传的文档已被处理成向量片段，你接收到的{context}是通过向量检索获得的最相关文档片段集合。
@@ -137,6 +146,59 @@ class RobustRAGChain:
 
         return template
 
+    def _create_web_search_prompt_template(self) -> str:
+        """创建网络搜索提示模板"""
+        template = f"""# 角色设定
+{SYSTEM_PROMPTS.get('web_search', '你是DeepSeek AI联网搜索助手，负责根据用户问题进行联网搜索并提供准确的信息。')}
+
+# 输入信息
+用户问题：{question}
+
+# 任务要求
+1. 分析用户问题，确定搜索关键词
+2. 基于搜索结果，提供准确、最新的信息
+3. 确保回答全面且符合事实
+4. 引用搜索结果的来源
+
+# 回答格式
+- 直接回答用户问题
+- 提供详细信息
+- 标注信息来源
+
+现在，开始处理用户的搜索请求。"""
+        return template
+
+    def _create_conflict_resolution_prompt_template(self) -> str:
+        """创建冲突解决提示模板"""
+        template = f"""# 角色设定
+{SYSTEM_PROMPTS.get('conflict_resolution', '你是DeepSeek AI冲突协调助手，负责处理知识库信息和联网搜索信息之间的冲突。')}
+
+# 输入信息
+## 知识库信息：
+{knowledge_base_info}
+
+## 联网搜索信息：
+{web_search_info}
+
+## 用户问题：
+{question}
+
+# 任务要求
+1. 分析两种信息之间的冲突点
+2. 客观呈现两种不同的信息
+3. 不偏向任何一方，保持中立
+4. 明确告知用户存在信息冲突
+5. 建议用户根据实际情况判断
+
+# 回答格式
+- 首先说明存在信息冲突
+- 分别呈现两种信息及其来源
+- 分析可能的原因
+- 给出建议
+
+现在，开始处理冲突信息。"""
+        return template
+
     def _call_api_with_retry(self, messages: List[Dict], max_retries: int = 3) -> Dict:
         """带重试机制的 API 调用"""
         headers = {
@@ -198,13 +260,14 @@ class RobustRAGChain:
 
         return {"success": False, "error": "达到最大重试次数"}
 
-    def ask(self, question: str, chat_history: str = "") -> Dict[str, Any]:
+    def ask(self, question: str, chat_history: str = "", session_id: str = "default") -> Dict[str, Any]:
         """
         回答问题
 
         参数:
             question: 用户问题
             chat_history: 对话历史
+            session_id: 会话ID，用于对话状态管理
 
         返回:
             包含答案和元数据的字典
@@ -218,63 +281,140 @@ class RobustRAGChain:
             }
 
         print(f"\n🔍 用户提问: {question}")
+        print(f"会话ID: {session_id}")
         print("执行RAG检索...")
 
         try:
-            # 1. 执行向量检索
-            source_docs = self.vector_manager.similarity_search(question, k=4)
+            # 获取对话状态
+            conversation_state = self.conversation_state_manager.get_state(session_id)
+            
+            # 检查是否与上一个问题相似
+            if conversation_state.get("last_question"):
+                similarity = self.advanced_ai.question_similarity_detection(
+                    conversation_state["last_question"], question
+                )
+                if similarity > 0.8:
+                    print(f"⚠️ 检测到相似问题，相似度: {similarity:.3f}")
+                    # 可以返回之前的回答或进行适当处理
+
+            # 1. 使用高级AI模块执行语义搜索
+            source_docs = self.advanced_ai.semantic_search(question, k=4, score_threshold=0.5)
 
             # 2. 构建上下文
             context = ""
             for i, doc in enumerate(source_docs):
-                context += f"{i+1}. {doc.page_content[:300]}...\n"
+                # 提取文档关键信息
+                key_info = self.advanced_ai.extract_key_information(doc)
+                context += f"{i+1}. {key_info['summary']}\n关键词: {', '.join(key_info['keywords'][:5])}\n"
 
-            # 3. 构建消息
+            # 3. 判断知识库是否有相关信息
+            has_knowledge_base_info = len(source_docs) > 0 and any(len(doc.page_content.strip()) > 0 for doc in source_docs)
+
+            # 4. 保持对话语义连贯性
+            enhanced_question = self.advanced_ai.maintain_conversation_coherence(
+                [{'role': 'user', 'content': question}], question
+            )
+
+            # 5. 构建消息
             prompt = self.prompt_template.format(
                 context=context,
                 chat_history=chat_history,
-                question=question
+                question=enhanced_question
             )
 
             messages = [
                 {"role": "user", "content": prompt}
             ]
 
-            # 4. 调用API
+            # 6. 调用API获取知识库回答
             api_result = self._call_api_with_retry(messages)
 
+            knowledge_base_answer = ""
             if api_result["success"]:
-                # 5. 处理API响应
                 data = api_result["data"]
-                answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                knowledge_base_answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if not isinstance(knowledge_base_answer, str):
+                    knowledge_base_answer = str(knowledge_base_answer)
 
-                # 确保answer是字符串
-                if not isinstance(answer, str):
-                    answer = str(answer)
+            # 7. 执行联网搜索
+            print("执行联网搜索...")
+            web_search_prompt = self.web_search_prompt_template.format(question=enhanced_question)
+            web_search_messages = [
+                {"role": "user", "content": web_search_prompt}
+            ]
+            web_search_result = self._call_api_with_retry(web_search_messages)
 
+            web_search_answer = ""
+            if web_search_result["success"]:
+                web_search_data = web_search_result["data"]
+                web_search_answer = web_search_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if not isinstance(web_search_answer, str):
+                    web_search_answer = str(web_search_answer)
+
+            # 8. 处理结果
+            final_answer = ""
+            sources_info = []
+
+            if has_knowledge_base_info:
+                # 有知识库信息，检查是否需要冲突处理
+                if web_search_answer and "未找到相关信息" not in knowledge_base_answer:
+                    # 检查是否存在冲突
+                    conflict_prompt = self.conflict_resolution_prompt_template.format(
+                        knowledge_base_info=knowledge_base_answer,
+                        web_search_info=web_search_answer,
+                        question=enhanced_question
+                    )
+                    conflict_messages = [
+                        {"role": "user", "content": conflict_prompt}
+                    ]
+                    conflict_result = self._call_api_with_retry(conflict_messages)
+
+                    if conflict_result["success"]:
+                        conflict_data = conflict_result["data"]
+                        final_answer = conflict_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        if not isinstance(final_answer, str):
+                            final_answer = str(final_answer)
+                    else:
+                        # 冲突处理失败，使用知识库回答
+                        final_answer = knowledge_base_answer
+                else:
+                    # 无冲突，使用知识库回答
+                    final_answer = knowledge_base_answer
+                
                 # 处理源文档信息
                 sources_info = self._process_source_documents(source_docs)
-
-                response = {
-                    "answer": answer,
-                    "source_documents": source_docs,
-                    "sources_info": sources_info,
-                    "success": True
-                }
-
-                print(f"✅ 回答生成完成")
-                print(f"   使用上下文数: {len(source_docs)}")
-
-                return response
             else:
-                # API调用失败
-                error = api_result.get("error", "API调用失败")
-                return {
-                    "answer": f"API调用失败: {error}",
-                    "source_documents": [],
-                    "sources_info": [],
-                    "success": False
-                }
+                # 无知识库信息，使用联网搜索结果
+                if web_search_answer:
+                    final_answer = f"根据联网搜索结果：\n{web_search_answer}"
+                else:
+                    final_answer = "抱歉，无法从知识库和联网搜索中获取相关信息。"
+
+            # 更新对话状态
+            self.conversation_state_manager.set_last_question(session_id, question)
+            self.conversation_state_manager.add_related_documents(session_id, source_docs)
+            
+            # 如果是新会话，设置对话主题
+            if conversation_state["interaction_count"] == 0:
+                # 简单提取主题
+                topic = question[:50]
+                self.conversation_state_manager.set_topic(session_id, topic)
+
+            response = {
+                "answer": final_answer,
+                "source_documents": source_docs,
+                "sources_info": sources_info,
+                "success": True,
+                "conversation_state": self.conversation_state_manager.get_conversation_context(session_id)
+            }
+
+            print(f"✅ 回答生成完成")
+            print(f"   使用上下文数: {len(source_docs)}")
+            print(f"   是否使用联网搜索: {'是' if web_search_answer else '否'}")
+            print(f"   对话主题: {conversation_state.get('topic', '未设置')}")
+            print(f"   交互次数: {conversation_state.get('interaction_count', 0)}")
+
+            return response
 
         except Exception as e:
             error_msg = f"回答问题时出错: {str(e)}"

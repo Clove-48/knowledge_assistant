@@ -148,6 +148,8 @@ class ToolIntegration:
 
         # 移除危险字符
         expression = expression.replace("__", "").replace("import", "").replace("eval", "")
+        # 将中文括号替换为英文括号
+        expression = expression.replace('（', '(').replace('）', ')')
 
         try:
             # 使用eval计算，但限制在安全环境
@@ -284,17 +286,24 @@ class ToolIntegration:
         if any(keyword in query_lower for keyword in calc_keywords):
             # 提取数学表达式
             import re
-            # 匹配简单的数学表达式
-            math_pattern = r'[\d+\-*/().^√πe]+'
-            matches = re.findall(math_pattern, query)
-            if matches:
-                expression = matches[0]
-                if any(op in expression for op in ['+', '-', '*', '/', '^', '√', '(', ')']):
-                    return {
-                        "tool_id": "calculator",
-                        "parameters": {"expression": expression},
-                        "confidence": 0.8
-                    }
+            # 匹配更复杂的数学表达式，包括括号和运算符
+            # 尝试提取整个表达式，而不仅仅是第一个匹配
+            # 移除查询中的非数学字符
+            # 保留数字、运算符、括号（包括中文括号）和函数
+            # 在字符类中，'-'放在最后避免被解释为范围
+            cleaned_query = re.sub(r'[^0-9+*/().^√πe\s（）-]', '', query)
+            # 移除多余的空格
+            cleaned_query = re.sub(r'\s+', '', cleaned_query)
+            # 将中文括号替换为英文括号
+            cleaned_query = cleaned_query.replace('（', '(').replace('）', ')')
+            
+            # 确保表达式包含运算符
+            if any(op in cleaned_query for op in ['+', '-', '*', '/', '^', '√']):
+                return {
+                    "tool_id": "calculator",
+                    "parameters": {"expression": cleaned_query},
+                    "confidence": 0.8
+                }
 
         # 检测时间请求
         time_keywords = ["现在几点", "当前时间", "今天日期", "星期几", "什么时间"]
