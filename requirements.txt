@@ -11,3 +11,4 @@ numpy
 mysql-connector-python
 pyjwt
 jieba
+psycopg2-binary

@@ -73,11 +73,16 @@ REDIS_SETTINGS = {
 
 # ==================== 数据库配置 ====================
 DATABASE_SETTINGS = {
-    "type": "mysql",  # 数据库类型: sqlite或mysql
+    "type": "supabase",  # 数据库类型: sqlite, mysql, supabase
     "sqlite_path": "users.db",  # SQLite数据库文件路径
     "mysql_host": os.environ.get("MYSQL_HOST", "localhost"),  # MySQL主机
     "mysql_port": int(os.environ.get("MYSQL_PORT", 3306)),  # MySQL端口
     "mysql_user": os.environ.get("MYSQL_USER", "root"),  # MySQL用户名
     "mysql_password": os.environ.get("MYSQL_PASSWORD", ""),  # MySQL密码
     "mysql_db": os.environ.get("MYSQL_DB", "ai_assistant"),  # MySQL数据库名
+    "supabase_host": os.environ.get("SUPABASE_HOST", "localhost"),  # Supabase主机
+    "supabase_port": int(os.environ.get("SUPABASE_PORT", 5432)),  # Supabase端口
+    "supabase_user": os.environ.get("SUPABASE_USER", "postgres"),  # Supabase用户名
+    "supabase_password": os.environ.get("SUPABASE_PASSWORD", ""),  # Supabase密码
+    "supabase_db": os.environ.get("SUPABASE_DB", "postgres"),  # Supabase数据库名
 }

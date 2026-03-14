@@ -27,16 +27,36 @@
 pip install -r requirements.txt
 ```
 
-### 配置API密钥
+### 配置API密钥和数据库
 
-1. 创建`.env`文件，添加DeepSeek API密钥：
+1. 创建`.env`文件，添加DeepSeek API密钥和Supabase配置：
    ```
+   # DeepSeek API Key
    DEEPSEEK_API_KEY=your-api-key-here
+
+   # Supabase配置（推荐）
+   SUPABASE_HOST=your-supabase-host
+   SUPABASE_PORT=5432
+   SUPABASE_USER=your-supabase-user
+   SUPABASE_PASSWORD=your-supabase-password
+   SUPABASE_DB=your-supabase-database
+
+   # 或MySQL配置（可选）
+   # MYSQL_HOST=localhost
+   # MYSQL_PORT=3306
+   # MYSQL_USER=root
+   # MYSQL_PASSWORD=
+   # MYSQL_DB=ai_assistant
    ```
 
 2. 或者在部署时设置环境变量：
    ```bash
    export DEEPSEEK_API_KEY=your-api-key-here
+   export SUPABASE_HOST=your-supabase-host
+   export SUPABASE_PORT=5432
+   export SUPABASE_USER=your-supabase-user
+   export SUPABASE_PASSWORD=your-supabase-password
+   export SUPABASE_DB=your-supabase-database
    ```
 
 ### 运行应用
@@ -54,15 +74,34 @@ streamlit run streamlit_full_ui.py
 1. 上传代码到GitHub
 2. 访问 https://share.streamlit.io/
 3. 连接GitHub仓库
-4. 设置环境变量 `DEEPSEEK_API_KEY`
+4. 设置环境变量：
+   - `DEEPSEEK_API_KEY` - 您的DeepSeek API密钥
+   - `SUPABASE_HOST` - Supabase数据库主机
+   - `SUPABASE_PORT` - Supabase数据库端口
+   - `SUPABASE_USER` - Supabase数据库用户名
+   - `SUPABASE_PASSWORD` - Supabase数据库密码
+   - `SUPABASE_DB` - Supabase数据库名称
 5. 部署应用
 
 ### 本地部署
 
 1. 克隆代码库
-2. 安装依赖
-3. 配置API密钥
-4. 运行应用
+2. 安装依赖：`pip install -r requirements.txt`
+3. 配置API密钥和Supabase连接信息（见上文）
+4. 运行应用：`streamlit run streamlit_full_ui.py`
+
+### Supabase数据库部署
+
+1. 访问 [Supabase官网](https://supabase.com) 并注册账号
+2. 创建一个新的Supabase项目
+3. 在项目设置中找到数据库连接信息：
+   - 主机地址（Host）
+   - 端口（Port）
+   - 用户名（User）
+   - 密码（Password）
+   - 数据库名（Database）
+4. 将这些信息添加到`.env`文件中
+5. 应用启动时会自动创建必要的数据库表结构
 
 ## 项目结构
 
@@ -73,6 +112,7 @@ streamlit run streamlit_full_ui.py
 - `tool_integration.py` - 工具集成
 - `user_authentication.py` - 用户认证系统
 - `mysql_manager.py` - MySQL数据库管理
+- `supabase_manager.py` - Supabase数据库管理
 - `redis_manager.py` - Redis管理
 - `rag_chain.py` - RAG链实现
 - `config.py` - 配置文件
@@ -87,8 +127,10 @@ streamlit run streamlit_full_ui.py
 - ChromaDB
 - Sentence Transformers
 - DeepSeek API
-- MySQL
+- MySQL (可选)
+- Supabase (推荐)
 - Redis
+- PostgreSQL (Supabase使用)
 
 ## 使用指南
 
@@ -130,6 +172,18 @@ A: 支持PDF、TXT和MD格式的文件。
 
 ### Q: 文档大小有限制吗？
 A: 建议单个文档不超过10MB，以确保处理速度和质量。
+
+### Q: 如何获取Supabase连接信息？
+A: 登录Supabase控制台，进入您的项目，点击左侧菜单中的"Settings"，然后选择"Database"，在"Connection String"部分可以找到所有连接信息。
+
+### Q: Supabase部署需要付费吗？
+A: Supabase提供免费计划，包含500MB数据库存储空间和1GB带宽，对于大多数个人和小型项目来说已经足够。
+
+### Q: 可以使用其他PostgreSQL数据库而不是Supabase吗？
+A: 可以，只需要在`.env`文件中配置相应的连接信息即可，系统会自动使用SupabaseManager来连接PostgreSQL数据库。
+
+### Q: 应用启动时出现数据库连接错误怎么办？
+A: 请检查您的`.env`文件中的数据库配置是否正确，确保网络连接正常，并且Supabase项目处于活跃状态。
 
 ## 许可证
 

@@ -7,7 +7,15 @@ import jwt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
-from mysql_manager import MySQLManager
+from config import DATABASE_SETTINGS
+
+# 根据配置选择数据库管理器
+if DATABASE_SETTINGS.get("type") == "supabase":
+    from supabase_manager import SupabaseManager
+    DatabaseManager = SupabaseManager
+else:
+    from mysql_manager import MySQLManager
+    DatabaseManager = MySQLManager
 
 class UserAuthentication:
     """用户认证系统"""
@@ -16,7 +24,7 @@ class UserAuthentication:
         """
         初始化用户认证系统
         """
-        self.mysql_manager = MySQLManager()
+        self.mysql_manager = DatabaseManager()
         self.secret_key = os.urandom(24)  # 用于JWT签名的密钥
 
 
