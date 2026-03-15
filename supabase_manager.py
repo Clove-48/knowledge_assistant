@@ -2,6 +2,9 @@
 # Supabase数据库管理器
 
 import psycopg2
+import os
+import streamlit as st
+
 import json
 from typing import Optional, Dict, Any, List
 import time
@@ -17,6 +20,9 @@ class SupabaseManager:
         初始化Supabase管理器
         从config.py中读取Supabase配置
         """
+        supabase_url = os.environ.get("SUPABASE_URL") or st.secrets.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY", "")
+
         # 存储Supabase配置
         self.host = DATABASE_SETTINGS.get("supabase_host", "localhost")
         self.port = DATABASE_SETTINGS.get("supabase_port", 5432)
