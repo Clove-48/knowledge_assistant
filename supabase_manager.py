@@ -87,15 +87,44 @@ class SupabaseManager:
         max_retries = 3
         for i in range(max_retries):
             try:
-                # 测试连接
-                connection = psycopg2.connect(
-                    host=self.host,
-                    port=self.port,
-                    user=self.user,
-                    password=self.password,
-                    database=self.database,
-                    connect_timeout=10  # 添加连接超时
-                )
+                # 测试连接，添加hostaddr参数强制使用IPv4
+                import socket
+                try:
+                    # 尝试解析主机名获取IPv4地址
+                    addrinfo = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+                    if addrinfo:
+                        ipv4_address = addrinfo[0][4][0]
+                        print(f"📡 解析到IPv4地址: {ipv4_address}")
+                        connection = psycopg2.connect(
+                            host=self.host,
+                            hostaddr=ipv4_address,  # 强制使用IPv4地址
+                            port=self.port,
+                            user=self.user,
+                            password=self.password,
+                            database=self.database,
+                            connect_timeout=10  # 添加连接超时
+                        )
+                    else:
+                        # 如果无法解析IPv4，使用默认连接
+                        connection = psycopg2.connect(
+                            host=self.host,
+                            port=self.port,
+                            user=self.user,
+                            password=self.password,
+                            database=self.database,
+                            connect_timeout=10  # 添加连接超时
+                        )
+                except Exception as e:
+                    print(f"⚠️  IPv4解析失败: {e}")
+                    # 回退到默认连接
+                    connection = psycopg2.connect(
+                        host=self.host,
+                        port=self.port,
+                        user=self.user,
+                        password=self.password,
+                        database=self.database,
+                        connect_timeout=10  # 添加连接超时
+                    )
                 connection.close()
                 # 初始化表结构
                 self._init_tables()
@@ -156,15 +185,44 @@ class SupabaseManager:
                 max_retries = 2
                 for i in range(max_retries):
                     try:
-                        # 获取新连接
-                        self.connection = psycopg2.connect(
-                            host=self.manager.host,
-                            port=self.manager.port,
-                            user=self.manager.user,
-                            password=self.manager.password,
-                            database=self.manager.database,
-                            connect_timeout=5  # 添加连接超时
-                        )
+                        # 获取新连接，强制使用IPv4
+                        import socket
+                        try:
+                            # 尝试解析主机名获取IPv4地址
+                            addrinfo = socket.getaddrinfo(self.manager.host, self.manager.port, socket.AF_INET, socket.SOCK_STREAM)
+                            if addrinfo:
+                                ipv4_address = addrinfo[0][4][0]
+                                print(f"📡 解析到IPv4地址: {ipv4_address}")
+                                self.connection = psycopg2.connect(
+                                    host=self.manager.host,
+                                    hostaddr=ipv4_address,  # 强制使用IPv4地址
+                                    port=self.manager.port,
+                                    user=self.manager.user,
+                                    password=self.manager.password,
+                                    database=self.manager.database,
+                                    connect_timeout=5  # 添加连接超时
+                                )
+                            else:
+                                # 如果无法解析IPv4，使用默认连接
+                                self.connection = psycopg2.connect(
+                                    host=self.manager.host,
+                                    port=self.manager.port,
+                                    user=self.manager.user,
+                                    password=self.manager.password,
+                                    database=self.manager.database,
+                                    connect_timeout=5  # 添加连接超时
+                                )
+                        except Exception as e:
+                            print(f"⚠️  IPv4解析失败: {e}")
+                            # 回退到默认连接
+                            self.connection = psycopg2.connect(
+                                host=self.manager.host,
+                                port=self.manager.port,
+                                user=self.manager.user,
+                                password=self.manager.password,
+                                database=self.manager.database,
+                                connect_timeout=5  # 添加连接超时
+                            )
                         self.cursor = self.connection.cursor()
                         print("✅ 数据库连接成功")
                         return self.connection, self.cursor
