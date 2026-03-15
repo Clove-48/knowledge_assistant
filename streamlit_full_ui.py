@@ -546,6 +546,15 @@ def init_assistant():
 
 def main():
     """Streamlit主函数"""
+    # 启用详细日志
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    
+    print("=" * 80)
+    print("🚀 启动AI知识库问答助手")
+    print("=" * 80)
+    
     st.set_page_config(
         page_title="AI知识库问答助手",
         page_icon="🤖",
@@ -565,6 +574,44 @@ def main():
         st.session_state.login_mode = True  # True: 登录/注册，False: 已登录
     if 'is_processing' not in st.session_state:
         st.session_state.is_processing = False  # 防重复提交标志
+    if 'last_activity' not in st.session_state:
+        st.session_state.last_activity = time.time()  # 记录最后活动时间
+    if 'session_expiry' not in st.session_state:
+        st.session_state.session_expiry = 3600  # 会话过期时间（秒）
+    
+    # 检查会话是否过期
+    def check_session_expiry():
+        if not st.session_state.login_mode and 'last_activity' in st.session_state:
+            current_time = time.time()
+            if current_time - st.session_state.last_activity > st.session_state.session_expiry:
+                # 会话过期，重置状态
+                st.session_state.user_id = None
+                st.session_state.username = None
+                st.session_state.token = None
+                st.session_state.login_mode = True
+                st.session_state.current_session_id = None
+                st.error("会话已过期，请重新登录")
+                st.rerun()
+    
+    # 更新最后活动时间
+    def update_last_activity():
+        st.session_state.last_activity = time.time()
+    
+    # 检查会话过期
+    check_session_expiry()
+    # 更新活动时间
+    update_last_activity()
+    
+    # 输出会话状态调试信息
+    print("=" * 80)
+    print("📋 当前会话状态:")
+    print(f"   login_mode: {st.session_state.login_mode}")
+    print(f"   user_id: {st.session_state.user_id}")
+    print(f"   username: {st.session_state.username}")
+    print(f"   token: {st.session_state.token[:20]}..." if st.session_state.token else "   token: None")
+    print(f"   current_session_id: {st.session_state.current_session_id}")
+    print(f"   last_activity: {st.session_state.last_activity}")
+    print("=" * 80)
 
     # 初始化AI助手
     init_assistant()
@@ -596,14 +643,33 @@ def main():
                     
                     result = aassistant.user_auth.login(login_username, login_password, ip_address, user_agent)
                     if result["success"]:
+                        # 清除可能的旧状态
+                        st.session_state.user_id = None
+                        st.session_state.username = None
+                        st.session_state.token = None
+                        st.session_state.current_session_id = None
+                        
+                        # 设置新的会话状态
                         st.session_state.user_id = result["user_id"]
                         st.session_state.username = result["username"]
                         st.session_state.token = result["token"]
                         st.session_state.login_mode = False
+                        st.session_state.last_activity = time.time()  # 更新活动时间
+                        
                         # 登录成功后自动创建新会话
-                        new_session = aassistant.create_new_session(result["user_id"])
-                        if new_session:
-                            st.session_state.current_session_id = new_session["id"]
+                        try:
+                            new_session = aassistant.create_new_session(result["user_id"])
+                            if new_session:
+                                st.session_state.current_session_id = new_session["id"]
+                                print(f"✅ 登录成功，创建新会话: {new_session['id']}")
+                            else:
+                                print("❌ 创建新会话失败")
+                        except Exception as e:
+                            print(f"❌ 创建新会话异常: {e}")
+                            import traceback
+                            traceback.print_exc()
+                        
+                        st.success("登录成功，正在进入系统...")
                         st.rerun()
                     else:
                         st.error(result["message"])

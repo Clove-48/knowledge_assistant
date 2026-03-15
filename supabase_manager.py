@@ -83,25 +83,33 @@ class SupabaseManager:
             print("⚠️  Supabase连接信息不完整，使用内存存储作为后备")
             return False
             
-        try:
-            # 测试连接
-            connection = psycopg2.connect(
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database=self.database
-            )
-            connection.close()
-            # 初始化表结构
-            self._init_tables()
-            print("✅ Supabase连接成功")
-            return True
-        except Exception as e:
-            print(f"❌ Supabase连接失败: {e}")
-            # 使用内存存储作为后备
-            print("⚠️  使用内存存储作为后备")
-            return False
+        # 尝试多次连接
+        max_retries = 3
+        for i in range(max_retries):
+            try:
+                # 测试连接
+                connection = psycopg2.connect(
+                    host=self.host,
+                    port=self.port,
+                    user=self.user,
+                    password=self.password,
+                    database=self.database,
+                    connect_timeout=10  # 添加连接超时
+                )
+                connection.close()
+                # 初始化表结构
+                self._init_tables()
+                print("✅ Supabase连接成功")
+                return True
+            except Exception as e:
+                print(f"❌ Supabase连接失败 (尝试 {i+1}/{max_retries}): {e}")
+                if i < max_retries - 1:
+                    print("⏱️  等待2秒后重试...")
+                    time.sleep(2)
+                else:
+                    # 使用内存存储作为后备
+                    print("⚠️  使用内存存储作为后备")
+                    return False
     
     def _check_connection(self):
         """
@@ -144,34 +152,49 @@ class SupabaseManager:
                     print("⚠️  Supabase连接信息不完整，使用内存存储")
                     return None, None
                 
-                try:
-                    # 获取新连接
-                    self.connection = psycopg2.connect(
-                        host=self.manager.host,
-                        port=self.manager.port,
-                        user=self.manager.user,
-                        password=self.manager.password,
-                        database=self.manager.database
-                    )
-                    self.cursor = self.connection.cursor()
-                    return self.connection, self.cursor
-                except Exception as e:
-                    print(f"❌ 获取连接失败: {e}")
-                    # 即使失败也返回一个有效的上下文
-                    return None, None
+                # 尝试多次获取连接
+                max_retries = 2
+                for i in range(max_retries):
+                    try:
+                        # 获取新连接
+                        self.connection = psycopg2.connect(
+                            host=self.manager.host,
+                            port=self.manager.port,
+                            user=self.manager.user,
+                            password=self.manager.password,
+                            database=self.manager.database,
+                            connect_timeout=5  # 添加连接超时
+                        )
+                        self.cursor = self.connection.cursor()
+                        print("✅ 数据库连接成功")
+                        return self.connection, self.cursor
+                    except Exception as e:
+                        print(f"❌ 获取连接失败 (尝试 {i+1}/{max_retries}): {e}")
+                        if i < max_retries - 1:
+                            print("⏱️  等待1秒后重试...")
+                            time.sleep(1)
+                        else:
+                            # 即使失败也返回一个有效的上下文
+                            print("⚠️  连接失败，使用内存存储")
+                            return None, None
             
             def __exit__(self, exc_type, exc_val, exc_tb):
                 # 释放连接
                 if self.cursor:
                     try:
                         self.cursor.close()
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️  关闭游标失败: {e}")
                 if self.connection:
                     try:
+                        # 如果有异常，回滚事务
+                        if exc_type:
+                            self.connection.rollback()
+                        else:
+                            self.connection.commit()
                         self.connection.close()
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️  关闭连接失败: {e}")
         
         return ConnectionContext(self)
 

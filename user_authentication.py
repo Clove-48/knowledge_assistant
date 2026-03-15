@@ -25,7 +25,13 @@ class UserAuthentication:
         初始化用户认证系统
         """
         self.mysql_manager = DatabaseManager()
-        self.secret_key = os.urandom(24)  # 用于JWT签名的密钥
+        # 从环境变量获取JWT密钥，确保密钥在应用重启后保持一致
+        self.secret_key = os.environ.get('JWT_SECRET_KEY', 'default_jwt_secret_key_for_development_only')
+        # 确保密钥长度足够
+        if len(self.secret_key) < 24:
+            # 如果密钥太短，使用哈希扩展
+            import hashlib
+            self.secret_key = hashlib.sha256(self.secret_key.encode()).digest()
 
 
     def _hash_password(self, password: str) -> str:
@@ -90,28 +96,44 @@ class UserAuthentication:
         import time
         start_time = time.time()
         
+        # 输入验证
+        if not username or not password:
+            response_time = time.time() - start_time
+            self.mysql_manager.log_login_attempt(None, username or "空", False, "用户名或密码为空", response_time, ip_address, user_agent)
+            return {"success": False, "message": "用户名和密码不能为空"}
+        
         try:
+            print(f"🔐 开始登录流程: 用户名={username}, IP={ip_address}")
+            
             # 查找用户
             user = self.mysql_manager.get_user_by_username(username)
+            print(f"🔍 用户查找结果: {user is not None}")
 
             if not user:
                 response_time = time.time() - start_time
-                self.mysql_manager.log_login_attempt(None, username, False, "用户名或密码错误", response_time, ip_address, user_agent)
+                self.mysql_manager.log_login_attempt(None, username, False, "用户名不存在", response_time, ip_address, user_agent)
                 return {"success": False, "message": "用户名或密码错误"}
 
             user_id, username, stored_hash = user["id"], user["username"], user["password_hash"]
+            print(f"👤 找到用户: ID={user_id}, 用户名={username}")
 
             # 验证密码
-            if self._hash_password(password) != stored_hash:
+            hashed_password = self._hash_password(password)
+            print(f"🔒 密码哈希: {hashed_password[:10]}...")
+            print(f"🔒 存储哈希: {stored_hash[:10]}...")
+            
+            if hashed_password != stored_hash:
                 response_time = time.time() - start_time
-                self.mysql_manager.log_login_attempt(user_id, username, False, "用户名或密码错误", response_time, ip_address, user_agent)
+                self.mysql_manager.log_login_attempt(user_id, username, False, "密码错误", response_time, ip_address, user_agent)
                 return {"success": False, "message": "用户名或密码错误"}
 
             # 生成JWT token
             token = self._generate_token(user_id, username)
+            print(f"📝 生成token: {token[:20]}...")
 
             response_time = time.time() - start_time
             self.mysql_manager.log_login_attempt(user_id, username, True, "登录成功", response_time, ip_address, user_agent)
+            print(f"✅ 登录成功，响应时间: {response_time:.3f}秒")
 
             return {
                 "success": True,
@@ -122,8 +144,12 @@ class UserAuthentication:
             }
         except Exception as e:
             response_time = time.time() - start_time
-            self.mysql_manager.log_login_attempt(None, username, False, f"登录失败: {str(e)}", response_time, ip_address, user_agent)
-            return {"success": False, "message": f"登录失败: {str(e)}"}
+            error_message = f"登录失败: {str(e)}"
+            self.mysql_manager.log_login_attempt(None, username, False, error_message, response_time, ip_address, user_agent)
+            print(f"❌ 登录异常: {error_message}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "message": error_message}
 
     def _generate_token(self, user_id: int, username: str) -> str:
         """
