@@ -626,8 +626,8 @@ def main():
             st.subheader("用户登录")
             # 使用st.form来支持enter键提交
             with st.form(key='login_form'):
-                login_username = st.text_input("用户名", key="login_username")
-                login_password = st.text_input("密码", type="password", key="login_password")
+                login_username = st.text_input("用户名", key="login_username", placeholder="用户名可随意填写")
+                login_password = st.text_input("密码", type="password", key="login_password", placeholder="密码长度限制：至少6位且不超过20位")
                 login_button = st.form_submit_button("登录")
             
             if login_button:
@@ -680,10 +680,19 @@ def main():
             st.subheader("用户注册")
             # 使用st.form来支持enter键提交
             with st.form(key='register_form'):
-                reg_username = st.text_input("用户名", key="reg_username")
-                reg_password = st.text_input("密码", type="password", key="reg_password")
+                reg_username = st.text_input("用户名", key="reg_username", placeholder="用户名可随意填写")
+                reg_password = st.text_input("密码", type="password", key="reg_password", placeholder="密码长度限制：至少6位且不超过20位")
                 reg_email = st.text_input("邮箱（可选）", key="reg_email")
                 register_button = st.form_submit_button("注册")
+            
+            # 实时密码长度验证
+            if reg_password:
+                min_length = 6
+                max_length = 20
+                if len(reg_password) < min_length:
+                    st.error(f"密码长度不能少于{min_length}个字符")
+                elif len(reg_password) > max_length:
+                    st.error(f"密码长度不能超过{max_length}个字符")
             
             if register_button:
                 if reg_username and reg_password:
@@ -821,34 +830,35 @@ def main():
                             <div style='position: absolute; bottom: 12px; left: -8px; width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-right: 8px solid #f9f9f9;'></div>
                         </div>""", unsafe_allow_html=True)
 
-    # 主布局
-    col1, col2 = st.columns([3, 1])
+    # 主布局 - 优化为单页显示
+    # 使用更合理的列宽比例
+    col1, col2 = st.columns([2.5, 1.5])
 
     with col1:
-        # 聊天区域
+        # 聊天区域 - 调整高度以适应单页显示
         st.subheader("对话")
-        chat_container = st.container(height=500)
+        chat_container = st.container(height=500)  # 增加高度，减少底部留白
 
         # 输入区域
         user_input = st.chat_input("请输入您的问题...")
 
-        # 控制按钮
+        # 控制按钮 - 使用更紧凑的布局
         col1_1, col1_2, col1_3 = st.columns(3)
         with col1_1:
-            clear_btn = st.button("清空对话")
+            clear_btn = st.button("清空对话", use_container_width=True)
         with col1_2:
-            new_chat_btn = st.button("新对话")
+            new_chat_btn = st.button("新对话", use_container_width=True)
         with col1_3:
-            export_btn = st.button("导出对话")
+            export_btn = st.button("导出对话", use_container_width=True)
 
-        # 状态显示
+        # 状态显示 - 紧凑显示
         status = st.empty()
 
     with col2:
-        # 会话管理
+        # 会话管理 - 优化空间使用
         st.subheader("💬 会话管理")
 
-        # 会话列表
+        # 会话列表 - 使用紧凑显示
         try:
             # 强制重新加载会话列表，确保获取最新的会话信息
             sessions = aassistant.list_sessions(st.session_state.user_id)
@@ -866,32 +876,15 @@ def main():
                 if st.session_state.current_session_id:
                     if st.session_state.current_session_id in session_ids:
                         selected_index = session_ids.index(st.session_state.current_session_id)
-                    else:
-                        # 如果当前会话ID不在会话列表中，可能是刚创建的新会话
-                        # 尝试从本地缓存获取会话列表
-                        try:
-                            from conversation_manager import ConversationManager
-                            # 直接获取本地会话列表
-                            local_sessions = list(aassistant.conversation_manager.conversations.get(st.session_state.user_id, {}).keys())
-                            if st.session_state.current_session_id in local_sessions:
-                                # 如果在本地缓存中找到，重新加载会话列表
-                                sessions = aassistant.list_sessions(st.session_state.user_id)
-                                session_options = [f"{session['title']} ({session['message_count']}条消息)" for session in sessions]
-                                session_ids = [session['id'] for session in sessions]
-                                if st.session_state.current_session_id in session_ids:
-                                    selected_index = session_ids.index(st.session_state.current_session_id)
-                        except Exception as e:
-                            print(f"获取本地会话列表失败: {e}")
 
-                # 使用st.empty()来确保会话选择器稳定显示
-                session_selector_container = st.empty()
-                with session_selector_container:
-                    selected_session = st.selectbox(
-                        "选择会话",
-                        session_options,
-                        index=selected_index,
-                        key=f"session_selector_{st.session_state.current_session_id}"  # 添加动态key确保重新渲染
-                    )
+                # 会话选择器 - 使用紧凑显示
+                selected_session = st.selectbox(
+                    "选择会话",
+                    session_options,
+                    index=selected_index,
+                    key=f"session_selector_{st.session_state.current_session_id}",
+                    placeholder="选择一个会话"
+                )
                 selected_session_id = session_ids[session_options.index(selected_session)]
 
                 # 检测会话切换
@@ -904,15 +897,16 @@ def main():
                     # 强制重新渲染页面，确保所有组件都能响应状态变化
                     st.rerun()
 
-                # 会话标题
-                session_title = st.text_input("会话标题", value=sessions[session_options.index(selected_session)]['title'])
-                update_title_btn = st.button("更新标题")
-                
-                # 清空所有会话按钮
-                if st.button("清空所有会话"):
-                    aassistant.conversation_manager.clear_all_sessions(st.session_state.user_id)
-                    st.session_state.current_session_id = None
-                    st.rerun()
+                # 会话标题 - 紧凑显示
+                session_title = st.text_input("会话标题", value=sessions[session_options.index(selected_session)]['title'], label_visibility="collapsed")
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    update_title_btn = st.button("更新标题", use_container_width=True)
+                with col_btn2:
+                    if st.button("清空所有会话", use_container_width=True):
+                        aassistant.conversation_manager.clear_all_sessions(st.session_state.user_id)
+                        st.session_state.current_session_id = None
+                        st.rerun()
             else:
                 # 如果没有会话，创建一个新会话
                 if not st.session_state.current_session_id:
@@ -931,19 +925,25 @@ def main():
                     st.session_state.current_session_id = new_session["id"]
                     st.rerun()
 
-        # 文件上传
+        # 文件上传 - 紧凑显示
         st.subheader("📁 文件上传")
-        uploaded_files = st.file_uploader("上传文件（支持PDF、TXT、MD）",
-                                         type=["pdf", "txt", "md"],
-                                         accept_multiple_files=True)
+        uploaded_files = st.file_uploader(
+            "上传文件（支持PDF、TXT、MD）",
+            type=["pdf", "txt", "md"],
+            accept_multiple_files=True,
+            label_visibility="collapsed"
+        )
         upload_status = st.empty()
 
-        # 设置
+        # 设置 - 紧凑显示
         st.subheader("⚙️ 设置")
-        use_rag = st.checkbox("使用知识库检索", value=True)
-        use_tools = st.checkbox("启用工具（包括时间查询）", value=True)
+        col_settings = st.columns(2)
+        with col_settings[0]:
+            use_rag = st.checkbox("使用知识库检索", value=True)
+        with col_settings[1]:
+            use_tools = st.checkbox("启用工具", value=True)
 
-        # 系统信息
+        # 系统信息 - 紧凑显示
         st.subheader("ℹ️ 系统信息")
         # 创建系统信息容器
         system_info_container = st.empty()
@@ -1028,9 +1028,12 @@ def main():
                 sorted_sessions = sorted(current_sessions, key=lambda x: x.get('updated_at', ''), reverse=True)
                 latest_session_id = sorted_sessions[0]['id']
                 
-                # 如果当前会话就是最新的，提示用户
+                # 如果当前会话就是最新的，显示弹窗提醒
                 if st.session_state.current_session_id == latest_session_id:
-                    status.text("⚠️ 已经是最新的会话")
+                    # 使用Streamlit的弹窗提醒
+                    st.error("当前已是最新会话，无需创建新会话")
+                    # 可以使用st.info或st.warning来显示不同风格的提醒
+                    # st.info("当前已是最新会话，无需创建新会话")
                 else:
                     # 创建新会话
                     new_session = aassistant.create_new_session(user_id)

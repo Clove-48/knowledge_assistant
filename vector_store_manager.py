@@ -148,6 +148,30 @@ class VectorStoreManager:
             raise ValueError("向量数据库未初始化")
 
         print(f"执行相似度搜索: '{query}'")
+        
+        # 检查查询是否包含文件名
+        import re
+        file_match = re.search(r'文件(\d+)', query)
+        if file_match:
+            file_number = file_match.group(1)
+            print(f"检测到文件编号: {file_number}")
+            
+            # 执行相似度搜索
+            results = self.vector_store.similarity_search(query, k=k*2)  # 获取更多结果
+            
+            # 过滤出包含该文件编号的结果
+            filtered_results = []
+            for doc in results:
+                source = doc.metadata.get('source', '')
+                if f'{file_number}.' in source:
+                    filtered_results.append(doc)
+            
+            # 如果找到相关文件，返回过滤后的结果
+            if filtered_results:
+                print(f"找到 {len(filtered_results)} 个与文件{file_number}相关的文档")
+                return filtered_results[:k]  # 最多返回k个结果
+        
+        # 如果没有检测到文件名或没有找到相关文件，返回正常搜索结果
         results = self.vector_store.similarity_search(query, k=k)
         print(f"找到 {len(results)} 个相关文档")
         return results

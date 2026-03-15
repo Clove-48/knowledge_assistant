@@ -6,8 +6,7 @@ from typing import List
 from langchain_community.document_loaders import (
     PyPDFLoader,  # PDF加载器
     TextLoader,  # 文本加载器
-    UnstructuredMarkdownLoader  # Markdown加载器
-)
+)  # 移除UnstructuredMarkdownLoader，使用TextLoader处理Markdown文件
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
@@ -46,7 +45,7 @@ class DocumentProcessor:
         loader_map = {
             '.pdf': PyPDFLoader,
             '.txt': TextLoader,
-            '.md': UnstructuredMarkdownLoader,
+            '.md': TextLoader,  # 使用TextLoader处理Markdown文件
             # '.html': UnstructuredHTMLLoader,  # 需要安装 beautifulsoup4
             # '.docx': UnstructuredWordDocumentLoader,  # 需要安装 python-docx
             # '.pptx': UnstructuredPowerPointLoader,  # 需要安装 python-pptx
@@ -56,7 +55,7 @@ class DocumentProcessor:
             loader_class = loader_map[file_ext]
 
             # 特殊处理：不同加载器可能需要不同的参数
-            if file_ext == '.txt':
+            if file_ext in ['.txt', '.md']:
                 loader = loader_class(file_path, encoding='utf-8')
             else:
                 loader = loader_class(file_path)
@@ -64,6 +63,16 @@ class DocumentProcessor:
             print(f"正在加载文档: {os.path.basename(file_path)}")
             documents = loader.load()
             print(f"文档加载完成，共 {len(documents)} 页/段落")
+
+            # 为文档添加正确的元数据，包括源文件名
+            for i, doc in enumerate(documents):
+                # 确保元数据存在
+                if not doc.metadata:
+                    doc.metadata = {}
+                # 设置源文件名
+                doc.metadata['source'] = os.path.basename(file_path)
+                # 设置页码或段落编号
+                doc.metadata['page'] = i + 1
 
             return documents
         else:
