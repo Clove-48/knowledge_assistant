@@ -8,7 +8,15 @@ import traceback
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from mysql_manager import MySQLManager
+from config import DATABASE_SETTINGS
+
+# 根据配置选择数据库管理器
+if DATABASE_SETTINGS.get("type") == "supabase":
+    from supabase_manager import SupabaseManager
+    DatabaseManager = SupabaseManager
+else:
+    from mysql_manager import MySQLManager
+    DatabaseManager = MySQLManager
 
 # 自定义 JSON 编码器，处理 datetime 对象
 class DateTimeEncoder(json.JSONEncoder):
@@ -35,8 +43,8 @@ class ConversationManager:
         self.current_session_id = None
         self.current_user_id = None
 
-        # 初始化MySQL管理器
-        self.mysql_manager = MySQLManager()
+        # 初始化数据库管理器
+        self.mysql_manager = DatabaseManager()
 
         # 加载持久化的对话记录
         if persist_file:
@@ -388,7 +396,26 @@ class ConversationManager:
         返回:
             会话列表
         """
-        # 从MySQL加载会话列表
+        # 先检查本地缓存是否有数据
+        if user_id in self.conversations and self.conversations[user_id]:
+            # 构建返回列表
+            sessions = []
+            for session_id, conv in self.conversations[user_id].items():
+                session_info = {
+                    "id": session_id,
+                    "title": conv["title"],
+                    "created_at": conv["created_at"],
+                    "updated_at": conv["updated_at"],
+                    "message_count": len(conv["messages"]),
+                    "is_current": session_id == self.current_session_id and user_id == self.current_user_id
+                }
+                sessions.append(session_info)
+
+            # 按更新时间排序（最新的在前面）
+            sessions.sort(key=lambda x: x["updated_at"], reverse=True)
+            return sessions
+        
+        # 本地缓存中没有数据，从数据库加载
         mysql_sessions = self.mysql_manager.list_user_sessions(user_id)
         
         # 更新本地缓存

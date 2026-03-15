@@ -3,7 +3,6 @@
 
 import psycopg2
 import os
-import streamlit as st
 
 import json
 from typing import Optional, Dict, Any, List
@@ -20,29 +19,70 @@ class SupabaseManager:
         初始化Supabase管理器
         从config.py中读取Supabase配置
         """
-        supabase_url = os.environ.get("SUPABASE_URL") or st.secrets.get("SUPABASE_URL", "")
-        supabase_key = os.environ.get("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY", "")
-
-        # 存储Supabase配置
-        self.host = DATABASE_SETTINGS.get("supabase_host", "localhost")
-        self.port = DATABASE_SETTINGS.get("supabase_port", 5432)
-        self.user = DATABASE_SETTINGS.get("supabase_user", "postgres")
-        self.password = DATABASE_SETTINGS.get("supabase_password", "")
-        self.database = DATABASE_SETTINGS.get("supabase_db", "postgres")
+        print("开始初始化Supabase管理器...")
+        
+        # 尝试导入streamlit，用于获取secrets
+        try:
+            import streamlit as st
+            has_streamlit = True
+            print("✅ 成功导入streamlit")
+        except ImportError:
+            st = None
+            has_streamlit = False
+            print("⚠️  未导入streamlit，将使用默认配置")
+        
+        # 从环境变量、streamlit secrets或配置文件中获取Supabase连接信息
+        def get_secret(key, default=None):
+            if has_streamlit:
+                try:
+                    secret_value = st.secrets.get(key, default)
+                    print(f"✅ 从streamlit secrets获取 {key}: {secret_value}")
+                    return secret_value
+                except Exception as e:
+                    print(f"⚠️  从streamlit secrets获取 {key} 失败: {e}")
+                    return default
+            return default
+        
+        self.host = os.environ.get("SUPABASE_HOST") or get_secret("SUPABASE_HOST") or DATABASE_SETTINGS.get("supabase_host", "")
+        print(f"✅ 主机: {self.host}")
+        
+        try:
+            self.port = int(os.environ.get("SUPABASE_PORT", get_secret("SUPABASE_PORT") or DATABASE_SETTINGS.get("supabase_port", 5432)))
+            print(f"✅ 端口: {self.port}")
+        except Exception as e:
+            print(f"⚠️  解析端口失败: {e}，使用默认端口 5432")
+            self.port = 5432
+        
+        self.user = os.environ.get("SUPABASE_USER") or get_secret("SUPABASE_USER") or DATABASE_SETTINGS.get("supabase_user", "")
+        print(f"✅ 用户: {self.user}")
+        
+        self.password = os.environ.get("SUPABASE_PASSWORD") or get_secret("SUPABASE_PASSWORD") or DATABASE_SETTINGS.get("supabase_password", "")
+        print(f"✅ 密码: {'***' if self.password else '空'}")
+        
+        self.database = os.environ.get("SUPABASE_DB") or get_secret("SUPABASE_DB") or DATABASE_SETTINGS.get("supabase_db", "")
+        print(f"✅ 数据库: {self.database}")
         
         # 内存存储作为后备
         self.memory_store = {
             "users": {},
             "sessions": {}
         }
+        print("✅ 内存存储初始化完成")
         
         # 尝试连接
+        print("开始尝试连接Supabase...")
         self._connect()
+        print("✅ Supabase管理器初始化完成")
     
     def _connect(self):
         """
         测试Supabase数据库连接
         """
+        # 检查是否有有效的连接信息
+        if not all([self.host, self.user, self.password, self.database]):
+            print("⚠️  Supabase连接信息不完整，使用内存存储作为后备")
+            return False
+            
         try:
             # 测试连接
             connection = psycopg2.connect(
@@ -99,6 +139,11 @@ class SupabaseManager:
                 self.cursor = None
             
             def __enter__(self):
+                # 检查是否有有效的连接信息
+                if not all([self.manager.host, self.manager.user, self.manager.password, self.manager.database]):
+                    print("⚠️  Supabase连接信息不完整，使用内存存储")
+                    return None, None
+                
                 try:
                     # 获取新连接
                     self.connection = psycopg2.connect(
@@ -356,9 +401,11 @@ class SupabaseManager:
     def list_user_sessions(self, user_id: int) -> List[Dict[str, Any]]:
         """列出用户的所有会话"""
         # 先从内存存储获取，确保快速响应
-        memory_sessions = []
         if user_id in self.memory_store["sessions"]:
             memory_sessions = list(self.memory_store["sessions"][user_id].values())
+            # 如果内存存储中有数据，直接返回，不查询数据库
+            if memory_sessions:
+                return memory_sessions
         
         # 使用上下文管理器获取连接
         with self.get_connection() as (conn, cursor):
